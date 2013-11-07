@@ -149,32 +149,32 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 			glog.Errorf("[%s] Reading response: %s", ctx.Req.URL, err)
 			return goproxy.NewResponse(
 				ctx.Req, goproxy.ContentTypeText, 500, fmt.Sprintf("Reading response: %s", err))
-			}
-
-			if buf.Bytes()[buf.Len()-1] != firstByte {
-				// TODO re-attempt
-				glog.Errorf("[%s] Cache mismatch", ctx.Req.URL)
-				return resp
-			}
-
-			io.Copy(buf, responseBody)
-
-			resp.StatusCode = 200
-			resp.Header.Del("Content-Range")
-			resp.Body = ioutil.NopCloser(buf)
-
-		case 304:
-			resp.StatusCode = 200
-			resp.Body = ioutil.NopCloser(userData.CachedContent)
-
-		default:
-			glog.Errorf("[%s] Unhandled status code: %d", ctx.Req.URL, resp.StatusCode)
 		}
 
-		return resp
+		if buf.Bytes()[buf.Len()-1] != firstByte {
+			// TODO re-attempt
+			glog.Errorf("[%s] Cache mismatch", ctx.Req.URL)
+			return resp
+		}
+
+		io.Copy(buf, responseBody)
+
+		resp.StatusCode = 200
+		resp.Header.Del("Content-Range")
+		resp.Body = ioutil.NopCloser(buf)
+
+	case 304:
+		resp.StatusCode = 200
+		resp.Body = ioutil.NopCloser(userData.CachedContent)
+
+	default:
+		glog.Errorf("[%s] Unhandled status code: %d", ctx.Req.URL, resp.StatusCode)
+	}
+
+	return resp
 }
 
-func (proxy *EtchProxy) StoreCache (resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+func (proxy *EtchProxy) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	cache := proxy.Cache
 
 	lastModified := time.Now()
@@ -211,7 +211,7 @@ func (proxy *EtchProxy) StoreCache (resp *http.Response, ctx *goproxy.ProxyCtx) 
 	return resp
 }
 
-func (proxy *EtchProxy) UnguardRequest (resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+func (proxy *EtchProxy) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	requestMutex.Lock()
 	defer requestMutex.Unlock()
 	if chans := requestMutex.resChans[ctx.Req.URL.String()]; chans != nil {
