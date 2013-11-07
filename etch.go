@@ -23,15 +23,6 @@ type EtchContextData struct {
 	CachedContent *bytes.Buffer
 }
 
-type BufioReadCloser struct {
-	bufio.Reader
-	io.Closer
-}
-
-func NewBufioReadCloser(rc io.ReadCloser) *BufioReadCloser {
-	return &BufioReadCloser{*bufio.NewReader(rc), rc}
-}
-
 func ReqMethodIs(method string) goproxy.ReqConditionFunc {
 	return func(req *http.Request, ctx *goproxy.ProxyCtx) bool {
 		return req.Method == method
