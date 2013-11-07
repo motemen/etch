@@ -94,7 +94,7 @@ func (proxy *EtchProxy) MakeRangedRequest(req *http.Request, ctx *goproxy.ProxyC
 			return req, nil
 		}
 
-		if resp.StatusCode == 416 {
+		if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
 			glog.Infof("[%s] Got 416: attempting re-fetch", req.URL)
 
 			// clear cache
