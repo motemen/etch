@@ -152,9 +152,21 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 		}
 
 		if buf.Bytes()[buf.Len()-1] != firstByte {
-			// TODO re-attempt
-			glog.Errorf("[%s] Cache mismatch", ctx.Req.URL)
-			return resp
+			glog.V(2).Infof("[%s] Cache mismatch", ctx.Req.URL)
+
+			glog.V(2).Infof("[%s] Attempting re-fetch", ctx.Req.URL)
+
+			ctx.Req.Header.Del("Range")
+			ctx.Req.Header.Del("If-Modified-Since")
+			ctx.UserData = nil
+
+			_, _resp, err := proxy.Tr.DetailedRoundTrip(ctx.Req)
+			if _resp == nil || err != nil {
+				glog.Errorf("[%s] Re-fetch failed: %s", ctx.Req.URL, err)
+				return resp
+			}
+
+			return _resp
 		}
 
 		io.Copy(buf, responseBody)
