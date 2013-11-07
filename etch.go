@@ -130,10 +130,10 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 	userData := ctx.UserData.(*EtchContextData)
 
 	switch resp.StatusCode {
-	case 200:
+	case http.StatusOK:
 		// nop
 
-	case 206:
+	case http.StatusPartialContent:
 		buf := userData.CachedContent
 
 		// TODO check Content-Range value
@@ -148,7 +148,7 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 		if err != nil {
 			glog.Errorf("[%s] Reading response: %s", ctx.Req.URL, err)
 			return goproxy.NewResponse(
-				ctx.Req, goproxy.ContentTypeText, 500, fmt.Sprintf("Reading response: %s", err))
+				ctx.Req, goproxy.ContentTypeText, http.StatusInternalServerError, fmt.Sprintf("Reading response: %s", err))
 		}
 
 		if buf.Bytes()[buf.Len()-1] != firstByte {
@@ -159,13 +159,16 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 
 		io.Copy(buf, responseBody)
 
-		resp.StatusCode = 200
+		resp.StatusCode = http.StatusOK
 		resp.Header.Del("Content-Range")
 		resp.Body = ioutil.NopCloser(buf)
 
-	case 304:
-		resp.StatusCode = 200
+	case http.StatusNotModified:
+		resp.StatusCode = http.StatusOK
 		resp.Body = ioutil.NopCloser(userData.CachedContent)
+
+	case http.StatusNonAuthoritativeInfo:
+		resp.StatusCode = http.StatusGone
 
 	default:
 		glog.Errorf("[%s] Unhandled status code: %d", ctx.Req.URL, resp.StatusCode)
