@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -24,6 +25,17 @@ func (cache *Cache) UrlToFilePath(url *url.URL) string {
 	s := []string{cache.Root, url.Host}
 	s = append(s, strings.Split(url.Path, "/")...)
 	return path.Join(s...)
+}
+
+func (cache *Cache) Files() ([]string) {
+	files := make([]string, 0)
+	filepath.Walk(cache.Root, func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() == false {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files
 }
 
 func (cache *Cache) Get(url *url.URL) (string, error) {

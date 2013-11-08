@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -71,7 +72,7 @@ func (proxy *EtchProxy) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (
 	return req, nil
 }
 
-func (proxy *EtchProxy) MakeRangedRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	cache := proxy.Cache
 
 	if entry := cache.GetEntry(req.URL); entry.FileInfo != nil {
@@ -121,8 +122,6 @@ func (proxy *EtchProxy) MakeRangedRequest(req *http.Request, ctx *goproxy.ProxyC
 }
 
 func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-	glog.V(3).Infof("[%s] Headers: %s", ctx.Req.URL, resp.Header)
-
 	if ctx.UserData == nil {
 		return resp
 	}
@@ -248,8 +247,27 @@ func main() {
 	cache := &Cache{*cacheDir}
 	proxy := &EtchProxy{*goproxy.NewProxyHttpServer(), cache}
 
+	if glog.V(3) {
+		proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+			glog.Infof("Request: %+v", req)
+			return req, nil
+		})
+		proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+			glog.Infof("Response: %+v", resp)
+			return resp
+		})
+	}
+
+	proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		if req.URL.Host == "" {
+			keys := proxy.Cache.Files()
+			return req, goproxy.NewResponse(req, goproxy.ContentTypeText, 200, strings.Join(keys, "\n"))
+		}
+		return req, nil
+	})
+
 	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.GuardRequest)
-	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.MakeRangedRequest)
+	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.PrepareRangedRequest)
 	proxy.OnResponse(ReqMethodIs("GET")).DoFunc(proxy.RestoreCache)
 	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), ReqMethodIs("GET"), StatusCodeIs(200)).DoFunc(proxy.StoreCache)
 	proxy.OnResponse().DoFunc(proxy.UnguardRequest)
