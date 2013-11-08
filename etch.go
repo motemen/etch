@@ -237,15 +237,7 @@ func (proxy *EtchProxy) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCt
 	return resp
 }
 
-func main() {
-	cacheDir := flag.String("cache-dir", "cache", "cache directory")
-	proxyPort := flag.Int("port", 8080, "proxy port")
-
-	flag.Parse()
-
-	cache := &Cache{*cacheDir}
-	proxy := &EtchProxy{*goproxy.NewProxyHttpServer(), cache}
-
+func setupProxy(proxy *EtchProxy) {
 	if glog.V(3) {
 		proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 			glog.Infof("Request: %+v", req)
@@ -257,24 +249,22 @@ func main() {
 		})
 	}
 
-	proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		if req.URL.Host == "" {
-			keys := proxy.Cache.Keys()
-			content := ""
-			for _, key := range(keys) {
-				content += fmt.Sprintln(key)
-			}
-			return req, goproxy.NewResponse(req, goproxy.ContentTypeText, 200, content)
-		}
-
-		return req, nil
-	})
+	proxy.OnRequest().DoFunc(proxy.HandleNonProxyRequest)
 
 	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.GuardRequest)
 	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.PrepareRangedRequest)
 	proxy.OnResponse(ReqMethodIs("GET")).DoFunc(proxy.RestoreCache)
 	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), ReqMethodIs("GET"), StatusCodeIs(200), goproxy.Not(goproxy.ReqHostIs(""))).DoFunc(proxy.StoreCache)
 	proxy.OnResponse().DoFunc(proxy.UnguardRequest)
+}
+
+func main() {
+	cacheDir := flag.String("cache-dir", "cache", "cache directory")
+	proxyPort := flag.Int("port", 8080, "proxy port")
+
+	flag.Parse()
+
+	proxy := NewEtchProxy(*cacheDir)
 
 	proxy.Verbose = true
 
