@@ -27,15 +27,23 @@ func (cache *Cache) UrlToFilePath(url *url.URL) string {
 	return path.Join(s...)
 }
 
-func (cache *Cache) Files() ([]string) {
-	files := make([]string, 0)
+func (cache *Cache) Keys() []*url.URL {
+	keys := make([]*url.URL, 0)
 	filepath.Walk(cache.Root, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() == false {
-			files = append(files, path)
+		if info.IsDir() {
+			return nil
 		}
+
+		relPath, err := filepath.Rel(cache.Root, path)
+		if err == nil {
+			pathParts := filepath.SplitList(relPath)
+			url := &url.URL{Scheme: "http", Host: pathParts[0], Path: strings.Join(pathParts[1:], "/")}
+			keys = append(keys, url)
+		}
+
 		return nil
 	})
-	return files
+	return keys
 }
 
 func (cache *Cache) Get(url *url.URL) (string, error) {

@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -260,16 +259,21 @@ func main() {
 
 	proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		if req.URL.Host == "" {
-			keys := proxy.Cache.Files()
-			return req, goproxy.NewResponse(req, goproxy.ContentTypeText, 200, strings.Join(keys, "\n"))
+			keys := proxy.Cache.Keys()
+			content := ""
+			for _, key := range(keys) {
+				content += fmt.Sprintln(key)
+			}
+			return req, goproxy.NewResponse(req, goproxy.ContentTypeText, 200, content)
 		}
+
 		return req, nil
 	})
 
 	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.GuardRequest)
 	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.PrepareRangedRequest)
 	proxy.OnResponse(ReqMethodIs("GET")).DoFunc(proxy.RestoreCache)
-	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), ReqMethodIs("GET"), StatusCodeIs(200)).DoFunc(proxy.StoreCache)
+	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), ReqMethodIs("GET"), StatusCodeIs(200), goproxy.Not(goproxy.ReqHostIs(""))).DoFunc(proxy.StoreCache)
 	proxy.OnResponse().DoFunc(proxy.UnguardRequest)
 
 	proxy.Verbose = true
