@@ -17,6 +17,7 @@ import (
 type EtchProxy struct {
 	goproxy.ProxyHttpServer
 	Cache *Cache
+	RequestMutex *RequestMutex
 }
 
 type EtchContextData struct {
@@ -43,16 +44,26 @@ type RequestMutex struct {
 	resChans map[string][]chan *http.Response
 }
 
-var requestMutex = &RequestMutex{resChans: make(map[string][]chan *http.Response)}
+
+func NewEtchProxy(cacheDir string) *EtchProxy {
+	etch := &EtchProxy{}
+	etch.ProxyHttpServer = *goproxy.NewProxyHttpServer()
+	etch.Cache = &Cache{cacheDir}
+	etch.RequestMutex = &RequestMutex{resChans: make(map[string][]chan *http.Response)}
+
+	setupProxy(etch)
+
+	return etch
+}
 
 func (proxy *EtchProxy) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-	requestMutex.Lock()
-	chans, ok := requestMutex.resChans[req.URL.String()]
+	proxy.RequestMutex.Lock()
+	chans, ok := proxy.RequestMutex.resChans[req.URL.String()]
 
 	if ok {
 		ch := make(chan *http.Response)
-		requestMutex.resChans[req.URL.String()] = append(chans, ch)
-		requestMutex.Unlock()
+		proxy.RequestMutex.resChans[req.URL.String()] = append(chans, ch)
+		proxy.RequestMutex.Unlock()
 
 		glog.V(3).Infof("[%s] Waiting for ongoing request", req.URL)
 
@@ -64,8 +75,8 @@ func (proxy *EtchProxy) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (
 			return req, res
 		}
 	} else {
-		requestMutex.resChans[req.URL.String()] = make([]chan *http.Response, 0)
-		requestMutex.Unlock()
+		proxy.RequestMutex.resChans[req.URL.String()] = make([]chan *http.Response, 0)
+		proxy.RequestMutex.Unlock()
 	}
 
 	return req, nil
@@ -225,13 +236,13 @@ func (proxy *EtchProxy) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *
 }
 
 func (proxy *EtchProxy) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-	requestMutex.Lock()
-	defer requestMutex.Unlock()
-	if chans := requestMutex.resChans[ctx.Req.URL.String()]; chans != nil {
+	proxy.RequestMutex.Lock()
+	defer proxy.RequestMutex.Unlock()
+	if chans := proxy.RequestMutex.resChans[ctx.Req.URL.String()]; chans != nil {
 		for _, ch := range chans {
 			ch <- resp
 		}
-		delete(requestMutex.resChans, ctx.Req.URL.String())
+		delete(proxy.RequestMutex.resChans, ctx.Req.URL.String())
 	}
 
 	return resp
