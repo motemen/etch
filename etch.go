@@ -131,9 +131,20 @@ func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.Pro
 	return req, nil
 }
 
+func (proxy *EtchProxy) FixStatusCode(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+	switch resp.StatusCode {
+	case http.StatusNonAuthoritativeInfo:
+		// dat 落ち
+		resp.Header.Add("X-Original-Status-Code", fmt.Sprint(resp.StatusCode))
+		resp.StatusCode = http.StatusPaymentRequired
+	}
+	
+	return resp
+}
+
 func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	if ctx.UserData == nil {
-		return resp
+		return proxy.FixStatusCode(resp, ctx)
 	}
 
 	userData := ctx.UserData.(*EtchContextData)
@@ -162,6 +173,7 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 
 		if buf.Bytes()[buf.Len()-1] != firstByte {
 			glog.V(2).Infof("[%s] Cache mismatch", ctx.Req.URL)
+			// TODO invalidate cache
 
 			glog.V(2).Infof("[%s] Attempting re-fetch", ctx.Req.URL)
 
@@ -184,12 +196,11 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 		resp.Header.Del("Content-Range")
 		resp.Body = ioutil.NopCloser(buf)
 
-	case http.StatusNotModified:
+	case http.StatusNotModified,          // キャッシュから更新なし
+	     http.StatusNonAuthoritativeInfo: // DAT 落ち
+
 		resp.StatusCode = http.StatusOK
 		resp.Body = ioutil.NopCloser(userData.CachedContent)
-
-	case http.StatusNonAuthoritativeInfo:
-		resp.StatusCode = http.StatusGone
 
 	default:
 		glog.Errorf("[%s] Unhandled status code: %d", ctx.Req.URL, resp.StatusCode)
