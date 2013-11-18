@@ -93,7 +93,6 @@ func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.Pro
 			return req, nil
 		}
 
-		// TODO mutex
 		cachedContent := bytes.NewBuffer(content)
 		req.Header.Add("Range", fmt.Sprintf("bytes=%d-", cachedContent.Len()-1))
 		req.Header.Add("If-Modified-Since", entry.FileInfo.ModTime().Format(time.RFC850))
