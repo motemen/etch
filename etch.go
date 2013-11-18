@@ -16,7 +16,7 @@ import (
 
 type EtchProxy struct {
 	goproxy.ProxyHttpServer
-	Cache *Cache
+	Cache        *Cache
 	RequestMutex *RequestMutex
 }
 
@@ -43,7 +43,6 @@ type RequestMutex struct {
 	sync.Mutex
 	resChans map[string][]chan *http.Response
 }
-
 
 func NewEtchProxy(cacheDir string) *EtchProxy {
 	etch := &EtchProxy{}
@@ -138,7 +137,7 @@ func (proxy *EtchProxy) FixStatusCode(resp *http.Response, ctx *goproxy.ProxyCtx
 		resp.Header.Add("X-Original-Status-Code", fmt.Sprint(resp.StatusCode))
 		resp.StatusCode = http.StatusPaymentRequired
 	}
-	
+
 	return resp
 }
 
@@ -196,8 +195,8 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 		resp.Header.Del("Content-Range")
 		resp.Body = ioutil.NopCloser(buf)
 
-	case http.StatusNotModified,          // キャッシュから更新なし
-	     http.StatusNonAuthoritativeInfo: // DAT 落ち
+	case http.StatusNotModified, // キャッシュから更新なし
+		http.StatusNonAuthoritativeInfo: // DAT 落ち
 
 		resp.StatusCode = http.StatusOK
 		resp.Body = ioutil.NopCloser(userData.CachedContent)
