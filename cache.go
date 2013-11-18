@@ -2,13 +2,13 @@ package main
 
 import (
 	"github.com/golang/glog"
-	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,6 +19,7 @@ type Cache struct {
 type CacheEntry struct {
 	FilePath string
 	os.FileInfo
+	sync.RWMutex
 }
 
 func (cache *Cache) UrlToFilePath(url *url.URL) string {
@@ -46,60 +47,38 @@ func (cache *Cache) Keys() []*url.URL {
 	return keys
 }
 
-func (cache *Cache) Get(url *url.URL) (string, error) {
+func (cache *Cache) GetEntry(url *url.URL) *CacheEntry {
 	filePath := cache.UrlToFilePath(url)
-	bytes, err := ioutil.ReadFile(filePath)
-	return string(bytes), err
+	fileInfo, _ := os.Stat(filePath)
+	return &CacheEntry{FilePath: filePath, FileInfo: fileInfo}
 }
 
-func (cache *Cache) Set(url *url.URL, content string) error {
-	filePath := cache.UrlToFilePath(url)
-	dir, _ := path.Split(filePath)
+func (cacheEntry *CacheEntry) GetContent() ([]byte, error) {
+	cacheEntry.RLock()
+	defer cacheEntry.RUnlock()
+	return ioutil.ReadFile(cacheEntry.FilePath)
+}
+
+func (cacheEntry *CacheEntry) SetContent(content []byte, mtime time.Time) error {
+	cacheEntry.Lock()
+	defer cacheEntry.Unlock()
+
+	glog.V(2).Infof("[%s] SetContent()", cacheEntry.FilePath)
+
+	dir, _ := path.Split(cacheEntry.FilePath)
 
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return err
 	}
 
-	return ioutil.WriteFile(filePath, []byte(content), 0666)
-}
+	glog.V(2).Infof("[%s] Writing content", cacheEntry.FilePath)
 
-func (cache *Cache) GetWriter(url *url.URL) (io.Writer, error) {
-	filePath := cache.UrlToFilePath(url)
-	glog.Infof("GetWriter: %s -> %s", url, filePath)
-
-	dir, _ := path.Split(filePath)
-
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		return nil, err
+	if err := ioutil.WriteFile(cacheEntry.FilePath, content, 0666); err != nil {
+		return err
 	}
 
-	return os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0666)
-}
+	glog.V(2).Infof("[%s] Setting mtime to %s", cacheEntry.FilePath, mtime)
 
-func (cache *Cache) GetEntry(url *url.URL) *CacheEntry {
-	filePath := cache.UrlToFilePath(url)
-	fileInfo, _ := os.Stat(filePath)
-	return &CacheEntry{filePath, fileInfo}
-}
-
-func (cacheEntry *CacheEntry) Content() ([]byte, error) {
-	return ioutil.ReadFile(cacheEntry.FilePath)
-}
-
-func (cacheEntry *CacheEntry) GetWriter() (io.WriteCloser, error) {
-	glog.Infof("[%s] GetWriter", cacheEntry.FilePath)
-
-	dir, _ := path.Split(cacheEntry.FilePath)
-
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		return nil, err
-	}
-
-	return os.OpenFile(cacheEntry.FilePath, os.O_WRONLY|os.O_CREATE, 0666)
-}
-
-func (cacheEntry *CacheEntry) SetMtime(mtime time.Time) error {
-	glog.Infof("[%s] Setting mtime to %s", cacheEntry.FilePath, mtime)
 	return os.Chtimes(cacheEntry.FilePath, mtime, mtime)
 }
 
