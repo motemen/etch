@@ -2,6 +2,7 @@ package main_test
 
 import (
 	. "github.com/motemen/etch"
+	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -52,25 +53,35 @@ func Test200(t *testing.T) {
 	tr := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 	client := &http.Client{Transport: tr}
 
-	resp, err := client.Get(es.URL + "/200.dat")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if content, err := ioutil.ReadAll(resp.Body); err != nil {
-		t.Fatal(err)
-	} else if string(content) == "OK<>1<>dat\n" {
-	} else {
-		t.Fail()
-	}
+	Convey("An EtchProxy", t, func() {
+		Convey("When requested for a live URL", func() {
+			resp, err := client.Get(es.URL + "/200.dat")
+			if err != nil {
+				t.Fatal(err)
+			}
+			content, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	resp2, err := client.Get(es.URL + "/200.dat")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if content, err := ioutil.ReadAll(resp2.Body); err != nil {
-		t.Fatal(err)
-	} else if string(content) == "OK<>1<>dat\ndelta<>2\n" {
-	} else {
-		t.Fail()
-	}
+			Convey("Returns sane content", func() {
+				So(string(content), ShouldEqual, "OK<>1<>dat\n")
+			})
+		})
+
+		Convey("When requested for the same URL again", func() {
+			resp2, err := client.Get(es.URL + "/200.dat")
+			if err != nil {
+				t.Fatal(err)
+			}
+			content, err := ioutil.ReadAll(resp2.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			Convey("Returns sane content, with delta", func() {
+				So(string(content), ShouldEqual, "OK<>1<>dat\ndelta<>2\n")
+			})
+		})
+	})
 }

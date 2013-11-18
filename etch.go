@@ -88,7 +88,7 @@ func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.Pro
 	if entry := cache.GetEntry(req.URL); entry.FileInfo != nil {
 		glog.Infof("%s: found cache entry", req.URL)
 
-		content, err := entry.Content()
+		content, err := entry.GetContent()
 		if err != nil {
 			glog.Errorf("OnRequest: retrieving cache content: %s", err)
 			return req, nil
@@ -213,34 +213,25 @@ func (proxy *EtchProxy) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *
 	cache := proxy.Cache
 
 	lastModified := time.Now()
-	lastModifiedString := resp.Header.Get("Last-Modified")
-	if lastModifiedString != "" {
-		var err error
-		lastModified, err = http.ParseTime(lastModifiedString)
-		if err != nil {
+	if lastModifiedString := resp.Header.Get("Last-Modified"); lastModifiedString != "" {
+		if _lastModified, err := http.ParseTime(lastModifiedString); err != nil {
 			glog.Errorf(`[%s]: Parsing Last-Modified header "%s": %s`, ctx.Req.URL, lastModifiedString, err)
+		} else {
+			lastModified = _lastModified
 		}
 	}
 
 	cacheEntry := cache.GetEntry(ctx.Req.URL)
 	if cacheEntry.FileInfo == nil || cacheEntry.FileInfo.ModTime().Before(lastModified) {
-		glog.Infof("[%s] update cache: %s", ctx.Req.URL, cacheEntry.FilePath)
-
-		cacheWriter, err := cacheEntry.GetWriter()
-		if err != nil {
-			glog.Errorf("[%s]: cacheEntry.GetWriter: %s", ctx.Req.URL, err)
-			return resp
-		}
+		glog.Infof("[%s] Update cache: %s", ctx.Req.URL, cacheEntry.FilePath)
 
 		buf := new(bytes.Buffer)
-		io.Copy(io.MultiWriter(buf, cacheWriter), resp.Body)
-		cacheWriter.Close()
-
-		cacheEntry.SetMtime(lastModified)
+		io.Copy(buf, resp.Body)
+		cacheEntry.SetContent(buf.Bytes(), lastModified)
 
 		resp.Body = ioutil.NopCloser(buf)
 	} else {
-		glog.V(2).Infof("[%s] Response is not fresher than cache: %s <= %s", ctx.Req.URL, lastModified, cacheEntry.FileInfo.ModTime())
+		glog.V(2).Infof("[%s] Response is not fresher than cache: %s <= %s; no update", ctx.Req.URL, lastModified, cacheEntry.FileInfo.ModTime())
 	}
 
 	return resp
