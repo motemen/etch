@@ -70,8 +70,8 @@ func (cacheEntry *CacheEntry) FreshenContent(content []byte, mtime time.Time) (b
 
 	fileInfo, _ := os.Stat(cacheEntry.FilePath)
 
-	if fileInfo != nil && !fileInfo.ModTime().Before(mtime) {
-		cacheEntry.Logger.Infof("FreshenContent: mtime is not fresher than cache entry: %s <= %s", mtime, cacheEntry)
+	if fileInfo != nil && mtime.Before(fileInfo.ModTime()) {
+		cacheEntry.Logger.Infof("FreshenContent: mtime is not fresher than cache entry: %s < %s", mtime, cacheEntry)
 		return false, nil
 	}
 

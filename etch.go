@@ -250,7 +250,9 @@ func (proxy *EtchProxy) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *
 	_, err := cacheEntry.FreshenContent(buf.Bytes(), lastModified)
 	resp.Body = ioutil.NopCloser(buf)
 
-	proxy.GetLogger().Warningf("[%s] FreshenContent failed: %s", ctx.Req.URL, err)
+	if err != nil {
+		proxy.GetLogger().Warningf("[%s] FreshenContent failed: %s", ctx.Req.URL, err)
+	}
 
 	return resp
 }
