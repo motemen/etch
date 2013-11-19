@@ -57,8 +57,9 @@ func TestCacheEntry(t *testing.T) {
 			So(entry.Exists(), ShouldBeFalse)
 		})
 
-		Convey("SetContent(content, mtime)", func() {
-			err := entry.SetContent(([]byte)("foobar"), time.Now())
+		Convey("FreshenContent(content, mtime)", func() {
+			updated, err := entry.FreshenContent(([]byte)("foobar"), time.Now())
+			So(updated, ShouldBeTrue)
 			So(err, ShouldBeNil)
 		})
 	})
