@@ -189,8 +189,12 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 		}
 
 		if buf.Bytes()[buf.Len()-1] != firstByte {
-			proxy.GetLogger().Debugf("[%s] Cache mismatch", ctx.Req.URL)
-			// TODO invalidate cache
+			proxy.GetLogger().Infof("[%s] Cache mismatch; deleting cache", ctx.Req.URL)
+
+			cacheEntry := proxy.Cache.GetEntry(ctx.Req.URL)
+			if err := cacheEntry.Delete(); err != nil {
+				proxy.GetLogger().Errorf("[%s] Deleting cache failed: %s", ctx.Req.URL, err)
+			}
 
 			proxy.GetLogger().Debugf("[%s] Attempting re-fetch", ctx.Req.URL)
 
@@ -238,18 +242,15 @@ func (proxy *EtchProxy) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *
 		}
 	}
 
+	proxy.GetLogger().Infof("[%s] Update cache", ctx.Req.URL)
+
 	cacheEntry := cache.GetEntry(ctx.Req.URL)
-	if cacheEntry.FileInfo == nil || cacheEntry.FileInfo.ModTime().Before(lastModified) {
-		proxy.GetLogger().Infof("[%s] Update cache: %s", ctx.Req.URL, cacheEntry.FilePath)
+	buf := new(bytes.Buffer)
+	io.Copy(buf, resp.Body)
+	_, err := cacheEntry.FreshenContent(buf.Bytes(), lastModified)
+	resp.Body = ioutil.NopCloser(buf)
 
-		buf := new(bytes.Buffer)
-		io.Copy(buf, resp.Body)
-		cacheEntry.SetContent(buf.Bytes(), lastModified)
-
-		resp.Body = ioutil.NopCloser(buf)
-	} else {
-		proxy.GetLogger().Debugf("[%s] Response is not fresher than cache: %s <= %s; no update", ctx.Req.URL, lastModified, cacheEntry.FileInfo.ModTime())
-	}
+	proxy.GetLogger().Warningf("[%s] FreshenContent failed: %s", ctx.Req.URL, err)
 
 	return resp
 }
@@ -268,14 +269,11 @@ func (proxy *EtchProxy) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCt
 }
 
 func setupProxy(proxy *EtchProxy) {
-	if logger := proxy.GetLogger(); logger.IsTraceEnabled() {
+	if logger := proxy.GetLogger(); logger.IsDebugEnabled() {
 		proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-			proxy.GetLogger().Tracef("Request: %+v", req)
+			logger.Debugf("Request: %s %s", req.Method, req.URL)
+			logger.Tracef("Request Headers: %+v", req.Header)
 			return req, nil
-		})
-		proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-			proxy.GetLogger().Tracef("Response: %+v", resp)
-			return resp
 		})
 	}
 
@@ -286,6 +284,14 @@ func setupProxy(proxy *EtchProxy) {
 	proxy.OnResponse(ReqMethodIs("GET")).DoFunc(proxy.RestoreCache)
 	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), ReqMethodIs("GET"), StatusCodeIs(200), goproxy.Not(goproxy.ReqHostIs(""))).DoFunc(proxy.StoreCache)
 	proxy.OnResponse().DoFunc(proxy.UnguardRequest)
+
+	if logger := proxy.GetLogger(); logger.IsDebugEnabled() {
+		proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+			logger.Debugf("Response: [%d] %s", resp.StatusCode, resp.Status)
+			logger.Tracef("Response Headers: %+v", resp.Header)
+			return resp
+		})
+	}
 }
 
 func main() {
@@ -293,12 +299,13 @@ func main() {
 	proxyPort := flag.Int("port", 8080, "proxy port")
 
 	flag.Parse()
-	loggo.ConfigureLoggers("proxy=TRACE")
+
+	loggo.ConfigureLoggers("proxy=TRACE;cache=TRACE")
 	loggo.ReplaceDefaultWriter(loggo.NewSimpleWriter(os.Stderr, &EtchLogFormatter{}))
 
 	proxy := NewEtchProxy(*cacheDir)
 
-	proxy.Verbose = true
+	// proxy.Verbose = true
 
 	proxy.GetLogger().Infof("Starting etch at localhost:%d ...", *proxyPort)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *proxyPort), proxy); err != nil {

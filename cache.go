@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/golang/glog"
+	"github.com/howbazaar/loggo"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -20,6 +20,11 @@ type CacheEntry struct {
 	FilePath string
 	os.FileInfo
 	sync.RWMutex
+	loggo.Logger
+}
+
+func (proxy *Cache) GetLogger() loggo.Logger {
+	return loggo.GetLogger("cache")
 }
 
 func (cache *Cache) UrlToFilePath(url *url.URL) string {
@@ -50,7 +55,7 @@ func (cache *Cache) Keys() []*url.URL {
 func (cache *Cache) GetEntry(url *url.URL) *CacheEntry {
 	filePath := cache.UrlToFilePath(url)
 	fileInfo, _ := os.Stat(filePath)
-	return &CacheEntry{FilePath: filePath, FileInfo: fileInfo}
+	return &CacheEntry{FilePath: filePath, FileInfo: fileInfo, Logger: cache.GetLogger()}
 }
 
 func (cacheEntry *CacheEntry) GetContent() ([]byte, error) {
@@ -59,29 +64,46 @@ func (cacheEntry *CacheEntry) GetContent() ([]byte, error) {
 	return ioutil.ReadFile(cacheEntry.FilePath)
 }
 
-func (cacheEntry *CacheEntry) SetContent(content []byte, mtime time.Time) error {
+func (cacheEntry *CacheEntry) FreshenContent(content []byte, mtime time.Time) (bool, error) {
 	cacheEntry.Lock()
 	defer cacheEntry.Unlock()
 
-	glog.V(2).Infof("[%s] SetContent()", cacheEntry.FilePath)
+	fileInfo, _ := os.Stat(cacheEntry.FilePath)
+
+	if fileInfo != nil && !fileInfo.ModTime().Before(mtime) {
+		cacheEntry.Logger.Infof("FreshenContent: mtime is not fresher than cache entry: %s <= %s", mtime, cacheEntry)
+		return false, nil
+	}
+
+	cacheEntry.Logger.Debugf("[%s] FreshenContent()", cacheEntry.FilePath)
 
 	dir, _ := path.Split(cacheEntry.FilePath)
 
 	if err := os.MkdirAll(dir, 0777); err != nil {
-		return err
+		return false, err
 	}
 
-	glog.V(2).Infof("[%s] Writing content", cacheEntry.FilePath)
+	cacheEntry.Logger.Debugf("[%s] Writing content", cacheEntry.FilePath)
 
 	if err := ioutil.WriteFile(cacheEntry.FilePath, content, 0666); err != nil {
-		return err
+		return false, err
 	}
 
-	glog.V(2).Infof("[%s] Setting mtime to %s", cacheEntry.FilePath, mtime)
+	cacheEntry.Logger.Debugf("[%s] Setting mtime to %s", cacheEntry.FilePath, mtime)
 
-	return os.Chtimes(cacheEntry.FilePath, mtime, mtime)
+	if err := os.Chtimes(cacheEntry.FilePath, mtime, mtime); err != nil {
+		return false, err
+	} else {
+		return true, nil
+	}
 }
 
 func (cacheEntry *CacheEntry) Exists() bool {
 	return cacheEntry.FileInfo != nil
+}
+
+func (cacheEntry *CacheEntry) Delete() error {
+	cacheEntry.Lock()
+	defer cacheEntry.Unlock()
+	return os.Remove(cacheEntry.FilePath)
 }
