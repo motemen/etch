@@ -5,6 +5,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 )
@@ -46,15 +47,18 @@ func TestCacheEntry(t *testing.T) {
 
 	cache := &Cache{tmpDir}
 
-	Convey("A CacheEntry", t, func() {
+	Convey("A nonexistent CacheEntry", t, func() {
 		entry := cache.GetEntry(url)
 
 		Convey("FilePath", func() {
 			So(entry.FilePath, ShouldEqual, tmpDir+"/toro.2ch.net/book/dat/1363665368.dat")
 		})
 
-		Convey("Does not exist at this time", func() {
-			So(entry.Exists(), ShouldBeFalse)
+		Convey("GetContent() returns error", func() {
+			content, mtime, err := entry.GetContent()
+			So(content, ShouldBeZeroValue)
+			So(mtime, ShouldBeZeroValue)
+			So(err, ShouldHaveSameTypeAs, &os.PathError{})
 		})
 
 		Convey("FreshenContent(content, mtime)", func() {
@@ -67,14 +71,20 @@ func TestCacheEntry(t *testing.T) {
 	Convey("A CacheEntry of the same url", t, func() {
 		entry := cache.GetEntry(url)
 
-		Convey("Now exists", func() {
-			So(entry.Exists(), ShouldBeTrue)
-		})
-
-		Convey("GetContent()", func() {
-			content, err := entry.GetContent()
-			So(err, ShouldBeNil)
+		Convey("GetContent() succeeds", func() {
+			content, _, err := entry.GetContent()
 			So(content, ShouldResemble, []byte("foobar"))
+			So(err, ShouldBeNil)
+		})
+	})
+
+	Convey("An attempt to freshen with older date", t, func() {
+		entry := cache.GetEntry(url)
+		updated, err := entry.FreshenContent(([]byte)("legacy"), time.Time{})
+
+		Convey("Does not update cache content", func () {
+			So(updated, ShouldBeFalse)
+			So(err, ShouldBeNil)
 		})
 	})
 }

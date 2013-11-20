@@ -106,7 +106,7 @@ func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.Pro
 	if entry := cache.GetEntry(req.URL); entry.FileInfo != nil {
 		proxy.GetLogger().Infof("%s: found cache entry", req.URL)
 
-		content, err := entry.GetContent()
+		content, mtime, err := entry.GetContent()
 		if err != nil {
 			proxy.GetLogger().Errorf("OnRequest: retrieving cache content: %s", err)
 			return req, nil
@@ -114,7 +114,7 @@ func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.Pro
 
 		cachedContent := bytes.NewBuffer(content)
 		req.Header.Add("Range", fmt.Sprintf("bytes=%d-", cachedContent.Len()-1))
-		req.Header.Add("If-Modified-Since", entry.FileInfo.ModTime().Format(time.RFC850))
+		req.Header.Add("If-Modified-Since", mtime.Format(time.RFC850))
 
 		_, resp, err := proxy.Tr.DetailedRoundTrip(req)
 		if err != nil {

@@ -58,10 +58,21 @@ func (cache *Cache) GetEntry(url *url.URL) *CacheEntry {
 	return &CacheEntry{FilePath: filePath, FileInfo: fileInfo, Logger: cache.GetLogger()}
 }
 
-func (cacheEntry *CacheEntry) GetContent() ([]byte, error) {
+func (cacheEntry *CacheEntry) GetContent() ([]byte, time.Time, error) {
 	cacheEntry.RLock()
 	defer cacheEntry.RUnlock()
-	return ioutil.ReadFile(cacheEntry.FilePath)
+
+	fileInfo, err := os.Stat(cacheEntry.FilePath)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+
+	content, err := ioutil.ReadFile(cacheEntry.FilePath)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+
+	return content, fileInfo.ModTime(), nil
 }
 
 func (cacheEntry *CacheEntry) FreshenContent(content []byte, mtime time.Time) (bool, error) {
@@ -96,10 +107,6 @@ func (cacheEntry *CacheEntry) FreshenContent(content []byte, mtime time.Time) (b
 	} else {
 		return true, nil
 	}
-}
-
-func (cacheEntry *CacheEntry) Exists() bool {
-	return cacheEntry.FileInfo != nil
 }
 
 func (cacheEntry *CacheEntry) Delete() error {
