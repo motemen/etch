@@ -59,6 +59,7 @@ func TestCacheEntry(t *testing.T) {
 			So(content, ShouldBeZeroValue)
 			So(mtime, ShouldBeZeroValue)
 			So(err, ShouldHaveSameTypeAs, &os.PathError{})
+			So(os.IsNotExist(err), ShouldBeTrue)
 		})
 
 		Convey("FreshenContent(content, mtime)", func() {

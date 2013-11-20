@@ -102,50 +102,48 @@ func (proxy *EtchProxy) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (
 
 func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	cache := proxy.Cache
+	entry := cache.GetEntry(req.URL)
 
-	if entry := cache.GetEntry(req.URL); entry.FileInfo != nil {
-		proxy.GetLogger().Infof("%s: found cache entry", req.URL)
+	content, mtime, err := entry.GetContent()
 
-		content, mtime, err := entry.GetContent()
-		if err != nil {
-			proxy.GetLogger().Errorf("OnRequest: retrieving cache content: %s", err)
-			return req, nil
-		}
-
-		cachedContent := bytes.NewBuffer(content)
-		req.Header.Add("Range", fmt.Sprintf("bytes=%d-", cachedContent.Len()-1))
-		req.Header.Add("If-Modified-Since", mtime.Format(time.RFC850))
-
-		_, resp, err := proxy.Tr.DetailedRoundTrip(req)
-		if err != nil {
-			proxy.GetLogger().Errorf("OnRequest: executing request: %s", err)
-			return req, nil
-		}
-
-		if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
-			proxy.GetLogger().Infof("[%s] Got 416: attempting re-fetch", req.URL)
-
-			// clear cache
-			req.Header.Del("Range")
-			req.Header.Del("If-Modified-Since")
-
-			_, _resp, err := proxy.Tr.DetailedRoundTrip(req)
-
-			if err != nil {
-				proxy.GetLogger().Errorf("OnRequest: re-fetch: %s", err)
-				return req, nil
-			}
-
-			resp = _resp
-			cachedContent = new(bytes.Buffer)
-		}
-
-		ctx.UserData = &EtchContextData{cachedContent}
-
-		return req, resp
+	if err != nil {
+		proxy.GetLogger().Errorf("OnRequest: retrieving cache content: %s", err)
+		return req, nil
 	}
 
-	return req, nil
+	proxy.GetLogger().Infof("%s: found cache entry", req.URL)
+
+	cachedContent := bytes.NewBuffer(content)
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-", cachedContent.Len()-1))
+	req.Header.Add("If-Modified-Since", mtime.Format(time.RFC850))
+
+	_, resp, err := proxy.Tr.DetailedRoundTrip(req)
+	if err != nil {
+		proxy.GetLogger().Errorf("OnRequest: executing request: %s", err)
+		return req, nil
+	}
+
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		proxy.GetLogger().Infof("[%s] Got 416: attempting re-fetch", req.URL)
+
+		// clear cache
+		req.Header.Del("Range")
+		req.Header.Del("If-Modified-Since")
+
+		_, _resp, err := proxy.Tr.DetailedRoundTrip(req)
+
+		if err != nil {
+			proxy.GetLogger().Errorf("OnRequest: re-fetch: %s", err)
+			return req, nil
+		}
+
+		resp = _resp
+		cachedContent = new(bytes.Buffer)
+	}
+
+	ctx.UserData = &EtchContextData{cachedContent}
+
+	return req, resp
 }
 
 func (proxy *EtchProxy) FixStatusCode(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
