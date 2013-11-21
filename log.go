@@ -1,30 +1,47 @@
 package main
 
 import (
+	"github.com/elazarl/goproxy"
 	"github.com/howbazaar/loggo"
 )
 
-type LogPrefixable interface {
-	LogPrefixValue() interface{}
-	LogGroup() string
+func logConfig(context interface{}) (string, string, interface{}) {
+	switch context := context.(type) {
+	case *CacheEntry:
+		return "cache", "[%s] ", context.FilePath
+	case *goproxy.ProxyCtx:
+		return "proxy", "[%03d] ", context.Session & 0xFF
+	default:
+		return "", "[%s] ", context
+	}
 }
 
-func tracef(prefix LogPrefixable, pattern string, args ...interface{}) {
-	logger := loggo.GetLogger(prefix.LogGroup())
-	logger.Tracef("[%s] " + pattern, append([]interface{}{prefix.LogPrefixValue()}, args...)...)
+func tracef(context interface{}, pattern string, args ...interface{}) {
+	group, prefix, arg := logConfig(context)
+	logger := loggo.GetLogger(group)
+	logger.Tracef(prefix+pattern, append([]interface{}{arg}, args...)...)
 }
 
-func debugf(prefix LogPrefixable, pattern string, args ...interface{}) {
-	logger := loggo.GetLogger(prefix.LogGroup())
-	logger.Debugf("[%s] " + pattern, append([]interface{}{prefix.LogPrefixValue()}, args...)...)
+func debugf(context interface{}, pattern string, args ...interface{}) {
+	group, prefix, arg := logConfig(context)
+	logger := loggo.GetLogger(group)
+	logger.Debugf(prefix+pattern, append([]interface{}{arg}, args...)...)
 }
 
-func infof(prefix LogPrefixable, pattern string, args ...interface{}) {
-	logger := loggo.GetLogger(prefix.LogGroup())
-	logger.Infof("[%s] " + pattern, append([]interface{}{prefix.LogPrefixValue()}, args...)...)
+func infof(context interface{}, pattern string, args ...interface{}) {
+	group, prefix, arg := logConfig(context)
+	logger := loggo.GetLogger(group)
+	logger.Infof(prefix+pattern, append([]interface{}{arg}, args...)...)
 }
 
-func warningf(prefix LogPrefixable, pattern string, args ...interface{}) {
-	logger := loggo.GetLogger(prefix.LogGroup())
-	logger.Warningf("[%s] " + pattern, append([]interface{}{prefix.LogPrefixValue()}, args...)...)
+func warningf(context interface{}, pattern string, args ...interface{}) {
+	group, prefix, arg := logConfig(context)
+	logger := loggo.GetLogger(group)
+	logger.Warningf(prefix+pattern, append([]interface{}{arg}, args...)...)
+}
+
+func errorf(context interface{}, pattern string, args ...interface{}) {
+	group, prefix, arg := logConfig(context)
+	logger := loggo.GetLogger(group)
+	logger.Errorf(prefix+pattern, append([]interface{}{arg}, args...)...)
 }
