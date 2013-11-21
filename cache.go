@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/howbazaar/loggo"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -19,11 +18,14 @@ type Cache struct {
 type CacheEntry struct {
 	FilePath string
 	sync.RWMutex
-	loggo.Logger
 }
 
-func (proxy *Cache) GetLogger() loggo.Logger {
-	return loggo.GetLogger("cache")
+func (cacheEntry CacheEntry) LogPrefixValue() interface{} {
+	return cacheEntry.FilePath
+}
+
+func (cacheEntry CacheEntry) LogGroup() string {
+	return "cache"
 }
 
 func (cache *Cache) UrlToFilePath(url *url.URL) string {
@@ -53,7 +55,7 @@ func (cache *Cache) Keys() []*url.URL {
 
 func (cache *Cache) GetEntry(url *url.URL) *CacheEntry {
 	filePath := cache.UrlToFilePath(url)
-	return &CacheEntry{FilePath: filePath, Logger: cache.GetLogger()}
+	return &CacheEntry{FilePath: filePath}
 }
 
 func (cacheEntry *CacheEntry) GetContent() ([]byte, time.Time, error) {
@@ -77,14 +79,14 @@ func (cacheEntry *CacheEntry) FreshenContent(content []byte, mtime time.Time) (b
 	cacheEntry.Lock()
 	defer cacheEntry.Unlock()
 
+	tracef(cacheEntry, "FreshenContent")
+
 	fileInfo, _ := os.Stat(cacheEntry.FilePath)
 
 	if fileInfo != nil && mtime.Before(fileInfo.ModTime()) {
-		cacheEntry.Logger.Infof("FreshenContent: mtime is not fresher than cache entry: %s < %s", mtime, cacheEntry)
+		infof(cacheEntry, "FreshenContent: mtime is not fresher than cache entry: %s < %s", mtime, cacheEntry)
 		return false, nil
 	}
-
-	cacheEntry.Logger.Debugf("[%s] FreshenContent()", cacheEntry.FilePath)
 
 	dir, _ := path.Split(cacheEntry.FilePath)
 
@@ -92,13 +94,13 @@ func (cacheEntry *CacheEntry) FreshenContent(content []byte, mtime time.Time) (b
 		return false, err
 	}
 
-	cacheEntry.Logger.Debugf("[%s] Writing content", cacheEntry.FilePath)
+	debugf(cacheEntry, "Writing content")
 
 	if err := ioutil.WriteFile(cacheEntry.FilePath, content, 0666); err != nil {
 		return false, err
 	}
 
-	cacheEntry.Logger.Debugf("[%s] Setting mtime to %s", cacheEntry.FilePath, mtime)
+	debugf(cacheEntry, "Setting mtime to %s", mtime)
 
 	if err := os.Chtimes(cacheEntry.FilePath, mtime, mtime); err != nil {
 		return false, err

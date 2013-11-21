@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -30,12 +29,10 @@ type EtchLogFormatter struct{}
 
 func (*EtchLogFormatter) Format(level loggo.Level, module, filename string, line int, timestamp time.Time, message string) string {
 	return fmt.Sprintf(
-		"%s %5s [%s] %s:%d %s",
+		"%s %5s [%s] %s",
 		timestamp.Format("2006-01-02 15:04:05 MST"),
 		level,
 		module,
-		filepath.Base(filename),
-		line,
 		message)
 }
 
