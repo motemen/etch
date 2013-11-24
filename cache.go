@@ -37,6 +37,11 @@ func (cache *Cache) UrlToFilePath(url *url.URL) string {
 func (cache *Cache) Keys() []*url.URL {
 	keys := make([]*url.URL, 0)
 	filepath.Walk(cache.Root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			warningf(cache, "Listing keys: %s", err)
+			return err
+		}
+
 		if info.IsDir() {
 			return nil
 		}
