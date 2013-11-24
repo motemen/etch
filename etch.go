@@ -19,21 +19,11 @@ type EtchProxy struct {
 	goproxy.ProxyHttpServer
 	Cache        *Cache
 	RequestMutex *RequestMutex
+	ControlMux   *http.ServeMux
 }
 
 type EtchContextData struct {
 	CachedContent *bytes.Buffer
-}
-
-type EtchLogFormatter struct{}
-
-func (*EtchLogFormatter) Format(level loggo.Level, module, filename string, line int, timestamp time.Time, message string) string {
-	return fmt.Sprintf(
-		"%s [%s] %5s %s",
-		timestamp.Format("2006-01-02 15:04:05 MST"),
-		module,
-		level,
-		message)
 }
 
 func ReqMethodIs(method string) goproxy.ReqConditionFunc {
@@ -61,14 +51,11 @@ func NewEtchProxy(cacheDir string) *EtchProxy {
 	etch.ProxyHttpServer = *goproxy.NewProxyHttpServer()
 	etch.Cache = &Cache{cacheDir}
 	etch.RequestMutex = &RequestMutex{resChans: make(map[string][]chan *http.Response)}
+	etch.ControlMux = http.NewServeMux()
 
 	setupProxy(etch)
 
 	return etch
-}
-
-func (proxy *EtchProxy) GetLogger() loggo.Logger {
-	return loggo.GetLogger("proxy")
 }
 
 func (proxy *EtchProxy) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
@@ -266,7 +253,7 @@ func (proxy *EtchProxy) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCt
 }
 
 func setupProxy(proxy *EtchProxy) {
-	if logger := proxy.GetLogger(); logger.IsDebugEnabled() {
+	if logger, _, _ := logConfig(proxy); logger.IsDebugEnabled() {
 		proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 			debugf(ctx, "Request: %s %s", req.Method, req.URL)
 			tracef(ctx, "Request Headers: %+v", req.Header)
@@ -282,7 +269,7 @@ func setupProxy(proxy *EtchProxy) {
 	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), ReqMethodIs("GET"), StatusCodeIs(200), goproxy.Not(goproxy.ReqHostIs(""))).DoFunc(proxy.StoreCache)
 	proxy.OnResponse().DoFunc(proxy.UnguardRequest)
 
-	if logger := proxy.GetLogger(); logger.IsDebugEnabled() {
+	if logger, _, _ := logConfig(proxy); logger.IsDebugEnabled() {
 		proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 			debugf(ctx, "Response: [%d] %s", resp.StatusCode, resp.Status)
 			tracef(ctx, "Response Headers: %+v", resp.Header)
@@ -301,6 +288,7 @@ func main() {
 	loggo.ReplaceDefaultWriter(loggo.NewSimpleWriter(os.Stderr, &EtchLogFormatter{}))
 
 	proxy := NewEtchProxy(*cacheDir)
+	proxy.SetupControlMux()
 
 	// proxy.Verbose = true
 
