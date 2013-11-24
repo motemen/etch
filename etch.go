@@ -54,6 +54,7 @@ func NewEtchProxy(cacheDir string) *EtchProxy {
 	etch.ControlMux = http.NewServeMux()
 
 	setupProxy(etch)
+	setupControlMux(etch)
 
 	return etch
 }
@@ -288,7 +289,6 @@ func main() {
 	loggo.ReplaceDefaultWriter(loggo.NewSimpleWriter(os.Stderr, &EtchLogFormatter{}))
 
 	proxy := NewEtchProxy(*cacheDir)
-	proxy.SetupControlMux()
 
 	// proxy.Verbose = true
 

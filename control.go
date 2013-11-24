@@ -56,7 +56,7 @@ func (proxy *EtchProxy) HandleNonProxyRequest(req *http.Request, ctx *goproxy.Pr
 	return req, rw.Response(req)
 }
 
-func (proxy *EtchProxy) SetupControlMux() {
+func setupControlMux(proxy *EtchProxy) {
 	proxy.ControlMux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Add("Content-Type", "text/plain; charset=utf-8")
 
