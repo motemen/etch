@@ -48,7 +48,7 @@ func newResponseWriter() *responseWriter {
 // プロキシでないリクエストを処理
 
 func (proxy *EtchProxy) HandleNonProxyRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-	if req.URL.Host != "" {
+	if req.URL.Host != "" && req.URL.Host != req.Header.Get("Host") {
 		return req, nil
 	}
 
@@ -64,7 +64,7 @@ func setupControlMux(proxy *EtchProxy) {
 
 		keys := proxy.Cache.Keys()
 		for _, key := range keys {
-			rw.Write([]byte(key.String()))
+			rw.Write([]byte(key.String() + "\n"))
 		}
 	})
 

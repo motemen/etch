@@ -22,11 +22,13 @@ func (*EtchLogFormatter) Format(level loggo.Level, module, filename string, line
 func logConfig(context interface{}) (loggo.Logger, string, interface{}) {
 	switch context := context.(type) {
 	case *Cache:
-		return loggo.GetLogger("cache"), "%s", nil
+		return loggo.GetLogger("cache"), "%s", ""
 	case *CacheEntry:
 		return loggo.GetLogger("cache"), "[%s] ", context.FilePath
 	case *goproxy.ProxyCtx:
 		return loggo.GetLogger("proxy"), "[%03d] ", context.Session & 0xFF
+	case *EtchProxy:
+		return loggo.GetLogger("etch"), "%s", ""
 	default:
 		return loggo.GetLogger(""), "[%s] ", context
 	}
