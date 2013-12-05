@@ -6,24 +6,29 @@ import (
 	"os"
 )
 
-type EtchControlServer struct {
+type ControlServer struct {
 	*http.ServeMux
-	proxy *EtchProxy
+	Proxy *ProxyServer
 }
 
-func NewEtchControl (proxy *EtchProxy) *EtchControlServer {
-	controlServer := &EtchControlServer{http.NewServeMux(),proxy}
+func NewControlServer (proxy *ProxyServer) *ControlServer {
+	controlServer := &ControlServer{http.NewServeMux(),proxy}
+	controlServer.Setup()
 
-	controlServer.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+	return controlServer
+}
+
+func (control *ControlServer) Setup() {
+	control.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Add("Content-Type", "text/plain; charset=utf-8")
 
-		keys := proxy.Cache.Keys()
+		keys := control.Proxy.Cache.Keys()
 		for _, key := range keys {
 			rw.Write([]byte(key.String() + "\n"))
 		}
 	})
 
-	controlServer.HandleFunc("/cache", func(rw http.ResponseWriter, req *http.Request) {
+	control.HandleFunc("/cache", func(rw http.ResponseWriter, req *http.Request) {
 		urlString := req.URL.Query().Get("url")
 		if urlString == "" {
 			rw.WriteHeader(http.StatusBadRequest)
@@ -36,7 +41,7 @@ func NewEtchControl (proxy *EtchProxy) *EtchControlServer {
 			return
 		}
 
-		cacheEntry := proxy.Cache.GetEntry(u)
+		cacheEntry := control.Proxy.Cache.GetEntry(u)
 		content, mtime, err := cacheEntry.GetContent()
 
 		if os.IsNotExist(err) {
@@ -54,7 +59,7 @@ func NewEtchControl (proxy *EtchProxy) *EtchControlServer {
 
 		case "DELETE":
 			if err := cacheEntry.Delete(); err != nil {
-				errorf(proxy, "Deleting cache %s: %s", cacheEntry, err)
+				errorf(control, "Deleting cache %s: %s", cacheEntry, err)
 				rw.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -65,6 +70,4 @@ func NewEtchControl (proxy *EtchProxy) *EtchControlServer {
 			rw.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
-
-	return controlServer
 }

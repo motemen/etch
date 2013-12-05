@@ -20,14 +20,6 @@ type CacheEntry struct {
 	sync.RWMutex
 }
 
-func (cacheEntry CacheEntry) LogPrefixValue() interface{} {
-	return cacheEntry.FilePath
-}
-
-func (cacheEntry CacheEntry) LogGroup() string {
-	return "cache"
-}
-
 func (cache *Cache) UrlToFilePath(url *url.URL) string {
 	s := []string{cache.Root, url.Host}
 	s = append(s, strings.Split(url.Path, "/")...)

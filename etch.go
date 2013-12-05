@@ -15,11 +15,10 @@ import (
 	"time"
 )
 
-type EtchProxy struct {
+type ProxyServer struct {
 	goproxy.ProxyHttpServer
 	Cache        *Cache
 	RequestMutex *RequestMutex
-	ControlMux   *http.ServeMux
 }
 
 type EtchContextData struct {
@@ -46,19 +45,19 @@ type RequestMutex struct {
 	resChans map[string][]chan *http.Response
 }
 
-func NewEtchProxy(cacheDir string) *EtchProxy {
-	etch := &EtchProxy{}
-	etch.ProxyHttpServer = *goproxy.NewProxyHttpServer()
-	etch.Cache = &Cache{cacheDir}
-	etch.RequestMutex = &RequestMutex{resChans: make(map[string][]chan *http.Response)}
-	etch.ControlMux = http.NewServeMux()
+func NewProxyServer(cacheDir string) *ProxyServer {
+	proxy := &ProxyServer{
+		ProxyHttpServer: *goproxy.NewProxyHttpServer(),
+		Cache:           &Cache{cacheDir},
+		RequestMutex:    &RequestMutex{resChans: make(map[string][]chan *http.Response)},
+	}
 
-	setupProxy(etch)
+	proxy.Setup()
 
-	return etch
+	return proxy
 }
 
-func (proxy *EtchProxy) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func (proxy *ProxyServer) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	proxy.RequestMutex.Lock()
 	chans, ok := proxy.RequestMutex.resChans[req.URL.String()]
 
@@ -84,7 +83,7 @@ func (proxy *EtchProxy) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx) (
 	return req, nil
 }
 
-func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func (proxy *ProxyServer) PrepareRangedRequest(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	cache := proxy.Cache
 	entry := cache.GetEntry(req.URL)
 
@@ -130,7 +129,7 @@ func (proxy *EtchProxy) PrepareRangedRequest(req *http.Request, ctx *goproxy.Pro
 	return req, resp
 }
 
-func (proxy *EtchProxy) FixStatusCode(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+func (proxy *ProxyServer) FixStatusCode(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	switch resp.StatusCode {
 	case http.StatusNonAuthoritativeInfo:
 		// dat 落ち
@@ -141,7 +140,7 @@ func (proxy *EtchProxy) FixStatusCode(resp *http.Response, ctx *goproxy.ProxyCtx
 	return resp
 }
 
-func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+func (proxy *ProxyServer) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	if ctx.UserData == nil {
 		return proxy.FixStatusCode(resp, ctx)
 	}
@@ -212,7 +211,7 @@ func (proxy *EtchProxy) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 	return resp
 }
 
-func (proxy *EtchProxy) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+func (proxy *ProxyServer) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	cache := proxy.Cache
 
 	lastModified := time.Now()
@@ -239,7 +238,7 @@ func (proxy *EtchProxy) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx) *
 	return resp
 }
 
-func (proxy *EtchProxy) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+func (proxy *ProxyServer) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 	proxy.RequestMutex.Lock()
 	defer proxy.RequestMutex.Unlock()
 	if chans := proxy.RequestMutex.resChans[ctx.Req.URL.String()]; chans != nil {
@@ -252,7 +251,7 @@ func (proxy *EtchProxy) UnguardRequest(resp *http.Response, ctx *goproxy.ProxyCt
 	return resp
 }
 
-func setupProxy(proxy *EtchProxy) {
+func (proxy *ProxyServer) Setup() {
 	if logger, _, _ := logConfig(proxy); logger.IsDebugEnabled() {
 		proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 			debugf(ctx, "Request: %s %s", req.Method, req.URL)
@@ -278,15 +277,15 @@ func setupProxy(proxy *EtchProxy) {
 
 func main() {
 	cacheDir := flag.String("cache-dir", "cache", "cache directory")
-	proxyPort := flag.Int("port", 8080, "proxy port")
+	proxyPort := flag.Int("port", 25252, "proxy port")
 
 	flag.Parse()
 
 	loggo.ConfigureLoggers("<root>=TRACE;proxy=TRACE;cache=TRACE")
 	loggo.ReplaceDefaultWriter(loggo.NewSimpleWriter(os.Stderr, &EtchLogFormatter{}))
 
-	proxy := NewEtchProxy(*cacheDir)
-	control := NewEtchControl(proxy)
+	proxy := NewProxyServer(*cacheDir)
+	control := NewControlServer(proxy)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
@@ -297,10 +296,9 @@ func main() {
 		}
 	})
 
-	// proxy.Verbose = true
-
 	infof(proxy, "Starting etch at localhost:%d ...", *proxyPort)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *proxyPort), mux); err != nil {
 		errorf(proxy, "%s", err)
+		os.Exit(1)
 	}
 }

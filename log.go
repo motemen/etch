@@ -27,8 +27,8 @@ func logConfig(context interface{}) (loggo.Logger, string, interface{}) {
 		return loggo.GetLogger("cache"), "[%s] ", context.FilePath
 	case *goproxy.ProxyCtx:
 		return loggo.GetLogger("proxy"), "[%03d] ", context.Session & 0xFF
-	case *EtchProxy:
-		return loggo.GetLogger("etch"), "%s", ""
+	case *ProxyServer:
+		return loggo.GetLogger("proxy"), "%s", ""
 	default:
 		return loggo.GetLogger(""), "[%s] ", context
 	}
