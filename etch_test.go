@@ -1,7 +1,7 @@
 package main_test
 
 import (
-	. "."
+	. "github.com/motemen/etch"
 	. "github.com/smartystreets/goconvey/convey"
 	"io/ioutil"
 	"net/http"
@@ -41,7 +41,7 @@ func Test200(t *testing.T) {
 
 	t.Logf("Cache root: %s", tmpDir)
 
-	proxy := NewEtchProxy(tmpDir)
+	proxy := NewProxyServer(tmpDir)
 
 	testServer := httptest.NewServer(nil)
 	defer testServer.Close()
@@ -94,9 +94,10 @@ func TestControl(t *testing.T) {
 
 	t.Logf("Cache root: %s", tmpDir)
 
-	proxy := NewEtchProxy(tmpDir)
+	proxy := NewProxyServer(tmpDir)
+	control := NewControlServer(proxy)
 
-	etchHttpServer := httptest.NewServer(proxy)
+	etchHttpServer := httptest.NewServer(control)
 	defer etchHttpServer.Close()
 
 	client := &http.Client{}
