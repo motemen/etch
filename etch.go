@@ -54,7 +54,6 @@ func NewEtchProxy(cacheDir string) *EtchProxy {
 	etch.ControlMux = http.NewServeMux()
 
 	setupProxy(etch)
-	setupControlMux(etch)
 
 	return etch
 }
@@ -262,8 +261,6 @@ func setupProxy(proxy *EtchProxy) {
 		})
 	}
 
-	proxy.OnRequest().DoFunc(proxy.HandleNonProxyRequest)
-
 	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.GuardRequest)
 	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.PrepareRangedRequest)
 	proxy.OnResponse(ReqMethodIs("GET")).DoFunc(proxy.RestoreCache)
@@ -289,11 +286,21 @@ func main() {
 	loggo.ReplaceDefaultWriter(loggo.NewSimpleWriter(os.Stderr, &EtchLogFormatter{}))
 
 	proxy := NewEtchProxy(*cacheDir)
+	control := NewEtchControl(proxy)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Host == "" {
+			control.ServeHTTP(w, req)
+		} else {
+			proxy.ServeHTTP(w, req)
+		}
+	})
 
 	// proxy.Verbose = true
 
 	infof(proxy, "Starting etch at localhost:%d ...", *proxyPort)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", *proxyPort), proxy); err != nil {
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", *proxyPort), mux); err != nil {
 		errorf(proxy, "%s", err)
 	}
 }
