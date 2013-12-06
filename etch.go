@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -277,7 +278,8 @@ func (proxy *ProxyServer) Setup() {
 
 func main() {
 	cacheDir := flag.String("cache-dir", "cache", "cache directory")
-	proxyPort := flag.Int("port", 25252, "proxy port")
+	port := flag.Int("port", 25252, "proxy port")
+	hosts := flag.String("host", "2ch.net,bbspink.com", "hosts to proxy")
 
 	flag.Parse()
 
@@ -289,15 +291,18 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Host == "" {
-			control.ServeHTTP(w, req)
-		} else {
-			proxy.ServeHTTP(w, req)
+		for _, host := range strings.Split(*hosts, ",") {
+			if strings.HasSuffix(req.Host, "."+host) {
+				proxy.ServeHTTP(w, req)
+				return
+			}
 		}
+
+		control.ServeHTTP(w, req)
 	})
 
-	infof(proxy, "Starting etch at localhost:%d ...", *proxyPort)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", *proxyPort), mux); err != nil {
+	infof(proxy, "Starting etch at localhost:%d...", *port)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), mux); err != nil {
 		errorf(proxy, "%s", err)
 		os.Exit(1)
 	}
