@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"os"
@@ -11,8 +12,25 @@ type ControlServer struct {
 	Proxy *ProxyServer
 }
 
-func NewControlServer (proxy *ProxyServer) *ControlServer {
-	controlServer := &ControlServer{http.NewServeMux(),proxy}
+type Event interface {
+	Json() ([]byte, error)
+}
+
+type CacheUpdateEvent struct {
+	URL   *url.URL
+	Since int
+}
+
+func (e CacheUpdateEvent) Json() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"event": "cacheUpdate",
+		"url":   e.URL.String(),
+		"since": e.Since,
+	})
+}
+
+func NewControlServer(proxy *ProxyServer) *ControlServer {
+	controlServer := &ControlServer{http.NewServeMux(), proxy}
 	controlServer.Setup()
 
 	return controlServer
@@ -68,6 +86,24 @@ func (control *ControlServer) Setup() {
 
 		default:
 			rw.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+
+	control.HandleFunc("/events", func(rw http.ResponseWriter, req *http.Request) {
+		ch := control.Proxy.Listeners.Create()
+		defer control.Proxy.Listeners.Remove(ch)
+
+		for event := range ch {
+			json, err := event.Json()
+			if err != nil {
+				errorf(control, "%s", err)
+			} else {
+				rw.Write(json)
+				rw.Write([]byte("\n"))
+				if flusher, ok := rw.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
 		}
 	})
 }

@@ -20,6 +20,12 @@ type ProxyServer struct {
 	goproxy.ProxyHttpServer
 	Cache        *Cache
 	RequestMutex *RequestMutex
+	*Listeners
+}
+
+type Listeners struct {
+	sync.Mutex
+	chans []chan Event
 }
 
 type EtchContextData struct {
@@ -51,6 +57,7 @@ func NewProxyServer(cacheDir string) *ProxyServer {
 		ProxyHttpServer: *goproxy.NewProxyHttpServer(),
 		Cache:           &Cache{cacheDir},
 		RequestMutex:    &RequestMutex{resChans: make(map[string][]chan *http.Response)},
+		Listeners:       &Listeners{chans: make([]chan Event, 0)},
 	}
 
 	proxy.Setup()
@@ -193,6 +200,7 @@ func (proxy *ProxyServer) RestoreCache(resp *http.Response, ctx *goproxy.ProxyCt
 			return _resp
 		}
 
+		// 差分データなのでキャッシュと結合
 		io.Copy(buf, responseBody)
 
 		resp.StatusCode = http.StatusOK
@@ -225,6 +233,13 @@ func (proxy *ProxyServer) StoreCache(resp *http.Response, ctx *goproxy.ProxyCtx)
 	}
 
 	infof(ctx, "[%s] Update cache", ctx.Req.URL)
+
+	lineCount := 0
+	if userData, ok := ctx.UserData.(*EtchContextData); ok && userData.CachedContent != nil {
+		lineCount = strings.Count(userData.CachedContent.String(), "\n")
+	}
+
+	proxy.Listeners.Broadcast(CacheUpdateEvent{URL: resp.Request.URL, Since: lineCount+1})
 
 	cacheEntry := cache.GetEntry(ctx.Req.URL)
 	buf := new(bytes.Buffer)
@@ -273,6 +288,35 @@ func (proxy *ProxyServer) Setup() {
 			tracef(ctx, "Response Headers: %+v", resp.Header)
 			return resp
 		})
+	}
+}
+
+func (l *Listeners) Broadcast(e Event) {
+	for _, ch := range(l.chans) {
+		ch <- e
+	}
+}
+
+func (l *Listeners) Create() chan Event {
+	ch := make(chan Event)
+
+	l.Lock()
+	defer l.Unlock()
+
+	l.chans = append(l.chans, ch)
+
+	return ch
+}
+
+func (l *Listeners) Remove(ch <-chan Event) {
+	l.Lock()
+	defer l.Unlock()
+
+	l.chans = make([]chan Event, len(l.chans) - 1)
+	for _, _ch := range(l.chans) {
+		if ch != _ch {
+			l.chans = append(l.chans, _ch)
+		}
 	}
 }
 
