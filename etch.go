@@ -69,8 +69,6 @@ func (proxy *ProxyServer) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx)
 	proxy.RequestMutex.Lock()
 	chans, ok := proxy.RequestMutex.resChans[req.URL.String()]
 
-	proxy.Listeners.Broadcast(Event{})
-
 	if ok {
 		ch := make(chan *http.Response)
 		proxy.RequestMutex.resChans[req.URL.String()] = append(chans, ch)

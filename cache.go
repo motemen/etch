@@ -16,6 +16,7 @@ type Cache struct {
 }
 
 type CacheEntry struct {
+	URL      *url.URL
 	FilePath string
 	sync.RWMutex
 }
@@ -52,7 +53,7 @@ func (cache *Cache) Keys() []*url.URL {
 
 func (cache *Cache) GetEntry(url *url.URL) *CacheEntry {
 	filePath := cache.UrlToFilePath(url)
-	return &CacheEntry{FilePath: filePath}
+	return &CacheEntry{URL: url, FilePath: filePath}
 }
 
 func (cacheEntry *CacheEntry) GetContent() ([]byte, time.Time, error) {

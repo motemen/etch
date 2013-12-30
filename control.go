@@ -29,6 +29,17 @@ func (e CacheUpdateEvent) Json() ([]byte, error) {
 	})
 }
 
+type CacheDeleteEvent struct {
+	URL *url.URL
+}
+
+func (e CacheDeleteEvent) Json() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"event": "cacheDelete",
+		"url":   e.URL.String(),
+	})
+}
+
 func NewControlServer(proxy *ProxyServer) *ControlServer {
 	controlServer := &ControlServer{http.NewServeMux(), proxy}
 	controlServer.Setup()
@@ -81,6 +92,8 @@ func (control *ControlServer) Setup() {
 				rw.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+
+			control.Proxy.Listeners.Broadcast(CacheDeleteEvent{URL: cacheEntry.URL})
 
 			rw.WriteHeader(http.StatusNoContent)
 
