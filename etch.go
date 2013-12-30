@@ -69,6 +69,8 @@ func (proxy *ProxyServer) GuardRequest(req *http.Request, ctx *goproxy.ProxyCtx)
 	proxy.RequestMutex.Lock()
 	chans, ok := proxy.RequestMutex.resChans[req.URL.String()]
 
+	proxy.Listeners.Broadcast(Event{})
+
 	if ok {
 		ch := make(chan *http.Response)
 		proxy.RequestMutex.resChans[req.URL.String()] = append(chans, ch)
@@ -106,7 +108,10 @@ func (proxy *ProxyServer) PrepareRangedRequest(req *http.Request, ctx *goproxy.P
 
 	cachedContent := bytes.NewBuffer(content)
 	req.Header.Add("Range", fmt.Sprintf("bytes=%d-", cachedContent.Len()-1))
-	req.Header.Add("If-Modified-Since", mtime.Format(time.RFC850))
+	// なんか JST だと うまく 304 を返してくれないサーバがある…
+	req.Header.Add("If-Modified-Since", mtime.In(time.UTC).Format(time.RFC1123))
+
+	tracef(ctx, "Request Headers (modified): %+v", req.Header)
 
 	_, resp, err := proxy.Tr.DetailedRoundTrip(req)
 	if err != nil {
