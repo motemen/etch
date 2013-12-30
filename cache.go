@@ -77,7 +77,7 @@ func (cacheEntry *CacheEntry) FreshenContent(content []byte, mtime time.Time) (b
 	cacheEntry.Lock()
 	defer cacheEntry.Unlock()
 
-	tracef(cacheEntry, "FreshenContent")
+	tracef(cacheEntry, "FreshenContent()")
 
 	fileInfo, _ := os.Stat(cacheEntry.FilePath)
 
