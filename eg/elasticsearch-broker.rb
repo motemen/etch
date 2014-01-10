@@ -3,6 +3,8 @@ require 'uri'
 require 'logger'
 require 'faraday'
 require 'elasticsearch'
+require 'yajl'
+require 'yajl/http_stream'
 
 class Post
   attr_reader :url, :n, :name, :mail, :meta, :body, :title
@@ -23,20 +25,36 @@ end
 class Broker
   def initialize(etch_origin: 'http://localhost:25252', es_origin: 'http://localhost:9200')
     @logger = Logger.new(STDERR)
-    @logger.level = Logger::INFO
+    @logger.level = Logger::DEBUG
+
+    @etch_origin = etch_origin
+    @es_origin   = es_origin
 
     @etch = Faraday.new url: etch_origin
     @es   = Elasticsearch::Client.new url: es_origin, logger: @logger
   end
 
-  def fetch_all_thread_urls
+  def index_all_urls!
     @logger.info('fetching all thread urls...')
-    @etch.get('/').body.each_line.map { |url| url.chomp }
+    @etch.get('/').body.each_line do |url|
+      url.chomp!
+      index_thread_posts!(url)
+    end
   end
 
-  def index_all_urls!
-    fetch_all_thread_urls.each do |url|
-      index_thread_posts!(url)
+  def index_delta_urls_streaming!
+    @logger.info('waiting for delta updates...')
+
+    Yajl::HttpStream.get(@etch.url_prefix + 'events', symbolize_keys: true) do |event|
+      @logger.debug("got event: #{event}")
+
+      # keys: event, since, url
+      case event[:event]
+      when 'cacheUpdate'
+        index_thread_posts!(event[:url]) # TODO use 'since'
+      else
+        @logger.warn("unknown event: #{event[:event]}")
+      end
     end
   end
 
@@ -63,6 +81,8 @@ class Broker
 end
 
 config = {}
+do_index_all = nil
+do_index_delta = nil
 
 OptionParser.new do |opts|
   opts.on('--etch http://localhost:25252', 'etch origin') do |o|
@@ -72,7 +92,16 @@ OptionParser.new do |opts|
   opts.on('--es http://localhost:9200', 'ElasticSearch origin') do |o|
     config[:es_origin] = o
   end
+
+  opts.on('--all')   { do_index_all   = true }
+  opts.on('--delta') { do_index_delta = true }
 end.parse!
 
+if do_index_all == nil && do_index_delta == nil
+  # asuume both are specified
+  do_index_all = do_index_delta = true
+end
+
 broker = Broker.new(config)
-broker.index_all_urls!
+broker.index_all_urls! if do_index_all
+broker.index_delta_urls_streaming! if do_index_delta
