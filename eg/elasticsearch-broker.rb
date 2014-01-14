@@ -61,14 +61,28 @@ class Broker
   def index_thread_posts!(url)
     @logger.info("indexing #{url}...")
 
-    posts = @etch.get('/cache', { url: url }).body.each_line.with_index.map do |post, i|
-      begin
-        Post.new(url, i+1, post)
-      rescue => e
-        @logger.error "#{url} at #{i+1}: #{e}"
-        nil
+    posts = nil
+
+    5.times do
+      res = @etch.get('/cache', { url: url })
+
+      if res.status != 200
+        @logger.warn "retrieving cached data of #{url}: got #{res.status}; retry..."
+        sleep 0.5
+        next
       end
-    end.compact
+
+      posts = res.body.each_line.with_index.map do |post, i|
+        begin
+          Post.new(url, i+1, post)
+        rescue => e
+          @logger.error "#{url} at #{i+1}: #{e}"
+          nil
+        end
+      end.compact
+
+      break
+    end
 
     begin
       @es.bulk body: posts.map { |p|
