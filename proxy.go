@@ -20,22 +20,17 @@ type ProxyServer struct {
 	*Listeners
 }
 
-type Listeners struct {
-	sync.Mutex
-	chans []chan Event
-}
-
 type EtchContextData struct {
 	CachedContent *bytes.Buffer
 }
 
-func ReqMethodIs(method string) goproxy.ReqConditionFunc {
+func reqMethodIs(method string) goproxy.ReqConditionFunc {
 	return func(req *http.Request, ctx *goproxy.ProxyCtx) bool {
 		return req.Method == method
 	}
 }
 
-func StatusCodeIs(code int) goproxy.RespCondition {
+func statusCodeIs(code int) goproxy.RespCondition {
 	return goproxy.RespConditionFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) bool {
 		if resp == nil {
 			return false
@@ -276,10 +271,10 @@ func (proxy *ProxyServer) Setup() {
 		})
 	}
 
-	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.GuardRequest)
-	proxy.OnRequest(ReqMethodIs("GET")).DoFunc(proxy.PrepareRangedRequest)
-	proxy.OnResponse(ReqMethodIs("GET")).DoFunc(proxy.RestoreCache)
-	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), ReqMethodIs("GET"), StatusCodeIs(200), goproxy.Not(goproxy.ReqHostIs(""))).DoFunc(proxy.StoreCache)
+	proxy.OnRequest(reqMethodIs("GET")).DoFunc(proxy.GuardRequest)
+	proxy.OnRequest(reqMethodIs("GET")).DoFunc(proxy.PrepareRangedRequest)
+	proxy.OnResponse(reqMethodIs("GET")).DoFunc(proxy.RestoreCache)
+	proxy.OnResponse(goproxy.ContentTypeIs("text/plain"), reqMethodIs("GET"), statusCodeIs(200), goproxy.Not(goproxy.ReqHostIs(""))).DoFunc(proxy.StoreCache)
 	proxy.OnResponse().DoFunc(proxy.UnguardRequest)
 
 	if logger, _, _ := logConfig(proxy); logger.IsDebugEnabled() {
@@ -288,34 +283,5 @@ func (proxy *ProxyServer) Setup() {
 			tracef(ctx, "Response Headers: %+v", resp.Header)
 			return resp
 		})
-	}
-}
-
-func (l *Listeners) Broadcast(e Event) {
-	for _, ch := range l.chans {
-		ch <- e
-	}
-}
-
-func (l *Listeners) Create() chan Event {
-	ch := make(chan Event)
-
-	l.Lock()
-	defer l.Unlock()
-
-	l.chans = append(l.chans, ch)
-
-	return ch
-}
-
-func (l *Listeners) Remove(ch <-chan Event) {
-	l.Lock()
-	defer l.Unlock()
-
-	l.chans = make([]chan Event, len(l.chans)-1)
-	for _, _ch := range l.chans {
-		if ch != _ch {
-			l.chans = append(l.chans, _ch)
-		}
 	}
 }
