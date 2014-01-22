@@ -1,15 +1,16 @@
-package main
+package etch
 
 import (
 	"fmt"
 	"github.com/elazarl/goproxy"
 	"github.com/howbazaar/loggo"
+	"os"
 	"time"
 )
 
-type EtchLogFormatter struct{}
+type LogFormatter struct{}
 
-func (*EtchLogFormatter) Format(level loggo.Level, module, filename string, line int, timestamp time.Time, message string) string {
+func (*LogFormatter) Format(level loggo.Level, module, filename string, line int, timestamp time.Time, message string) string {
 	return fmt.Sprintf(
 		"%s [%s] %5s %s",
 		timestamp.Format("2006-01-02 15:04:05 MST"),
@@ -17,6 +18,11 @@ func (*EtchLogFormatter) Format(level loggo.Level, module, filename string, line
 		level,
 		message,
 	)
+}
+
+func ConfigureLoggers() {
+	loggo.ConfigureLoggers("<root>=TRACE;proxy=TRACE;cache=TRACE")
+	loggo.ReplaceDefaultWriter(loggo.NewSimpleWriter(os.Stderr, &LogFormatter{}))
 }
 
 func logConfig(context interface{}) (loggo.Logger, string, interface{}) {

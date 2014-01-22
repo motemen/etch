@@ -1,4 +1,4 @@
-package main_test
+package etch_test
 
 import (
 	. "github.com/motemen/etch"
